@@ -1,7 +1,35 @@
 #!/usr/bin/env ruby
 
 require "yaml"
-require_relative "alfred"
+require "json"
+
+class Item
+  def initialize
+    @title = ""
+    @subtitle = ""
+    @icon = {}
+    @arg = ""
+  end
+
+  def to_json(options = {})
+    hash = {"uid": @uid, "type": @type, "title": @title, "subtitle": @subtitle, "arg": @arg, "icon": @icon}
+    hash.to_json
+  end
+
+end
+
+class ItemList < DelegateClass(Array)
+  def initialize(items=[])
+     @items = items
+     super items
+  end
+
+  def to_json(options = {})
+    hash = {"items": @items}
+    hash.to_json
+  end
+
+end
 
 class ProxySwitcher
 
@@ -24,7 +52,7 @@ scutil | grep "PrimaryService" | awk '{print $3}'`
 SERVICE_NAME=`printf "open\nget Setup:/Network/Service/$SERVICE_GUID\nd.show" |\
 scutil | grep "UserDefinedName" | awk -F': ' '{print $2}'`
 echo $SERVICE_NAME
-EOF
+  EOF
 
   def initialize
     @service = self.primary_service
@@ -35,10 +63,10 @@ EOF
     `#{PRIMARY_SERVICE_CMD}`.chomp
   end
 
-  def to_xml
-    ItemList.new(@proxies).to_xml
+  def to_json(options = {})
+    ItemList.new(@proxies).to_json
   end
-  
+
   class ProxyOption < Item
 
     def self.buildProxy(service, name, options)
@@ -70,15 +98,17 @@ EOF
     TURN_OFF_CMD = "networksetup -set%sstate '%s' off"
 
     def initialize(service, name, options={})
-      super()
+      @title = ""
+      @icon = {}
       @service = service
       @human_name = name
       @name = Names[name]
+      @arg = ""
       self.parse_options(options)
       self.fetch_info
-      @attributes[:uid] = @name    
+      @uid = @name
       @subtitle = @service
-      @icon[:text] = "%s.png" % @status
+      @icon[:path] = "%s.png" % @status
     end
 
     def parse_options(options)
@@ -108,15 +138,15 @@ EOF
         end
       end
       if @status == 'On'
-        @attributes[:arg] = TURN_OFF_CMD % [@name, @service, 'off']
+        @arg = TURN_OFF_CMD % [@name, @service, 'off']
       else
         if @auth
-          @attributes[:arg] = TURN_ON_CMD % [@name, @service, @server, @port, 'on', "'#@username'", "'#@password'"]
+          @arg = TURN_ON_CMD % [@name, @service, @server, @port, 'on', "'#@username'", "'#@password'"]
         else
-          @attributes[:arg] = TURN_ON_CMD % [@name, @service, @server, @port, '', "", ""]
+          @arg = TURN_ON_CMD % [@name, @service, @server, @port, '', "", ""]
         end
       end
-      @title = "%s: %s, %s, %s" % [@human_name, @status, @server, @port]  
+      @title = "%s: %s, %s, %s" % [@human_name, @status, @server, @port]
     end
 
   end
@@ -144,8 +174,8 @@ EOF
           end
         end
       end
-      @attributes[:arg] = SET_STATE_CMD % [@service, @reversed_status]
-      @title = "%s: %s" % [@human_name, @status]  
+      @arg = SET_STATE_CMD % [@service, @reversed_status]
+      @title = "%s: %s" % [@human_name, @status]
     end
   end
 
@@ -177,9 +207,9 @@ EOF
         end
       end
       if @status == 'On'
-        @attributes[:arg] = TURN_OFF_CMD % [@name, @service, 'off']
+        @arg = TURN_OFF_CMD % [@name, @service, 'off']
       else
-        @attributes[:arg] = TURN_ON_CMD % [@name, @service, @url]
+        @arg = TURN_ON_CMD % [@name, @service, @url]
       end
       @title = "%s: %s, %s" % [@human_name, @status, @url]
     end
@@ -187,5 +217,5 @@ EOF
 end
 
 if $0 == __FILE__
-  puts ProxySwitcher.new.to_xml
+  puts JSON.pretty_generate(ProxySwitcher.new)
 end
